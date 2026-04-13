@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "vui": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "vui-run",
+        "mcp"
+      ]
+    }
+  }
+}
