@@ -17,8 +17,9 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  sessions     Session[]
-  memberships  OrganizationMember[]
+  sessions      Session[]
+  memberships   OrganizationMember[]
+  ingestionRuns IngestionRun[]
 }
 
 model Session {
@@ -41,7 +42,12 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members   OrganizationMember[]
+  members          OrganizationMember[]
+  funds            Fund[]
+  distributors     Distributor[]
+  mappingTemplates ColumnMappingTemplate[]
+  ingestionRuns    IngestionRun[]
+  workbenchOrders  WorkbenchOrder[]
 }
 
 model OrganizationMember {
@@ -62,4 +68,118 @@ enum OrgRole {
   OWNER
   ADMIN
   MEMBER
+}
+
+// ─── Ingestion Reference Data ─────────────────────────────────────────────────
+
+model Fund {
+  id             String   @id @default(cuid())
+  name           String
+  aliases        String[]
+  shareClasses   String[]
+  organizationId String
+  createdAt      DateTime @default(now())
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model Distributor {
+  id             String   @id @default(cuid())
+  name           String
+  organizationId String
+  createdAt      DateTime @default(now())
+
+  organization     Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ingestionRuns    IngestionRun[]
+  mappingTemplates ColumnMappingTemplate[]
+
+  @@unique([name, organizationId])
+  @@index([organizationId])
+}
+
+model ColumnMappingTemplate {
+  id             String    @id @default(cuid())
+  distributorId  String
+  organizationId String
+  name           String
+  mappingJson    Json
+  isDefault      Boolean   @default(false)
+  lastUsedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  distributor   Distributor    @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ingestionRuns IngestionRun[]
+
+  @@index([distributorId])
+  @@index([organizationId])
+}
+
+// ─── Ingestion Run ─────────────────────────────────────────────────────────────
+
+enum IngestionStatus {
+  PENDING
+  MAPPING
+  REVIEW
+  COMMITTED
+}
+
+model IngestionRun {
+  id               String          @id @default(cuid())
+  distributorId    String
+  organizationId   String
+  userId           String
+  closeCycle       DateTime
+  fileName         String
+  detectedColumns  String[]
+  previewRows      Json?
+  status           IngestionStatus @default(PENDING)
+  rowsProcessed    Int             @default(0)
+  rowsIngested     Int             @default(0)
+  rowsExcluded     Int             @default(0)
+  rowsFlagged      Int             @default(0)
+  aiQualityScore   Float?
+  aiSummary        String?
+  templateId       String?
+  committedAt      DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  distributor  Distributor            @relation(fields: [distributorId], references: [id])
+  organization Organization           @relation(fields: [organizationId], references: [id])
+  user         User                   @relation(fields: [userId], references: [id])
+  template     ColumnMappingTemplate? @relation(fields: [templateId], references: [id])
+  orders       WorkbenchOrder[]
+
+  @@index([organizationId])
+  @@index([distributorId])
+  @@index([userId])
+}
+
+// ─── Workbench Order ──────────────────────────────────────────────────────────
+
+model WorkbenchOrder {
+  id              String   @id @default(cuid())
+  runId           String
+  organizationId  String
+  transactionId   String
+  transactionType String
+  amount          Decimal
+  effectiveDate   DateTime
+  fundName        String?
+  shareClass      String?
+  investorName    String?
+  status          String?
+  currency        String?
+  aiFlags         Json?
+  isExcluded      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  run          IngestionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([runId])
+  @@index([organizationId])
 }
