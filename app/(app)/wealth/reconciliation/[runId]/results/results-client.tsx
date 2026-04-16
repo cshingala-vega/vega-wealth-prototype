@@ -249,7 +249,7 @@ export function ResultsClient({
                       </TableCell>
                       <TableCell className="text-sm">
                         {exc.exceptionType === "STAGE_MISMATCH" && exc.fieldDiffs?.status ? (
-                          <span>TA: {String(exc.fieldDiffs.status.ta)} <span className="text-amber-600">vs</span> {String(exc.fieldDiffs.status.portal)}</span>
+                          <span>{String(exc.fieldDiffs.status.portal)} <span className="text-amber-600">vs</span> {String(exc.fieldDiffs.status.ta)}</span>
                         ) : "—"}
                       </TableCell>
                       <TableCell>{exc.isPersistent && <span title="Persistent">🔥</span>}</TableCell>

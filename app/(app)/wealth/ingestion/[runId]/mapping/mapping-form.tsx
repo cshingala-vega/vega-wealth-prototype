@@ -458,9 +458,8 @@ export function MappingForm({ run, templates, previewRows }: MappingFormProps) {
                     Map columns to see a preview.
                   </p>
                 ) : (
-                  <ScrollArea className="w-full" style={{ maxHeight: 480 }}>
-                    <div className="overflow-x-auto">
-                      <Table>
+                  <div className="overflow-auto" style={{ maxHeight: 480 }}>
+                    <Table style={{ minWidth: previewHeaders.length * 140 }}>
                         <TableHeader>
                           <TableRow>
                             {previewHeaders.map((h) => (
@@ -484,8 +483,7 @@ export function MappingForm({ run, templates, previewRows }: MappingFormProps) {
                           ))}
                         </TableBody>
                       </Table>
-                    </div>
-                  </ScrollArea>
+                  </div>
                 )}
               </CardContent>
             </Card>

@@ -234,22 +234,13 @@ async function runReconciliationEngine(runId: string) {
       continue
     }
 
-    const hasStatusDiff = "status" in diffs
-    const hasAmountDiff = "amount" in diffs
-    const exceptionType = hasStatusDiff ? "STAGE_MISMATCH" as const : "AMOUNT_FIELD_DIFF" as const
+    // Single exception per matched pair — amount diff takes priority over stage mismatch
+    const exceptionType = "amount" in diffs ? "AMOUNT_FIELD_DIFF" as const : "STAGE_MISMATCH" as const
 
     exceptionData.push({
       exceptionType, taTxnId: taRow.taTxnId, workbenchOrderId: match.id,
       amount: taRow.amount, fundName: taRow.fundName ?? match.fundName, fieldDiffs: diffs,
     })
-    // If both diffs, create a second exception for amount
-    if (hasStatusDiff && hasAmountDiff) {
-      exceptionData.push({
-        exceptionType: "AMOUNT_FIELD_DIFF", taTxnId: taRow.taTxnId, workbenchOrderId: match.id,
-        amount: taRow.amount, fundName: taRow.fundName ?? match.fundName,
-        fieldDiffs: { amount: diffs.amount },
-      })
-    }
   }
 
   // Unmatched portal orders → MISSING_IN_TA

@@ -27,15 +27,15 @@ export async function POST(request: Request): Promise<NextResponse> {
           content: `You are an AI assistant helping a financial operations team map columns from a trade file to a standard schema.
 
 The standard schema fields are:
-- transactionId (Transaction ID / Reference number)
-- amount (Trade amount / value)
-- transactionType (Subscription or Redemption)
-- effectiveDate (Order date / effective date / settlement date)
-- fundName (Fund name)
-- shareClass (Share class)
-- investorName (Investor name)
-- status (Trade status / stage)
-- currency (Currency code)
+- transactionId or taTxnId (Transaction ID / Reference number / TA Transaction ID. Common aliases: transaction_ID, TxnRef, Reference, tx_id, trade_id)
+- amount (Trade amount / value. Common aliases: trade_amount, Amount, TradeValue)
+- transactionType (Subscription or Redemption. Common aliases: trade_type, Type, TradeType)
+- effectiveDate (Order date / effective date / settlement date. Common aliases: effective_date, SettlementDate, TradeDate)
+- fundName (Fund name. Common aliases: fund_name, Fund, FundName)
+- shareClass (Share class. Common aliases: share_class, Class)
+- investorName (Investor name. Common aliases: investor_name, Client, InvestorName)
+- status (Trade status / stage. Common aliases: Stage, TradeStatus)
+- currency (Currency code. Common aliases: CCY, Ccy)
 
 The uploaded file has these column names: ${JSON.stringify(columns)}
 
