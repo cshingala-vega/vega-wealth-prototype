@@ -47,12 +47,14 @@ export default async function ReviewPage({ params }: { params: Promise<{ runId: 
     if (row.fundName && !knownAliases.includes(row.fundName.trim())) {
       flags.push({ type: "FUND_NOT_RECOGNISED", reason: `Fund '${row.fundName}' not found in registry` })
     }
+    const rawType = (row.transactionType ?? "").trim()
+    if (rawType !== "" && rawType.toLowerCase() !== "subscription" && rawType.toLowerCase() !== "redemption") {
+      flags.push({ type: "POTENTIAL_NIGO", reason: `Unrecognised transaction type: ${rawType}` })
+    }
     let nigoCount = 0
     if (!row.investorName || row.investorName.trim() === "") nigoCount++
     if (!row.shareClass || row.shareClass.trim() === "") nigoCount++
     if (row.fundName && !knownAliases.includes(row.fundName.trim())) nigoCount++
-    const ct = (row.transactionType ?? "").trim().toLowerCase()
-    if (ct !== "subscription" && ct !== "redemption") nigoCount++
     if (nigoCount >= 2) {
       flags.push({ type: "POTENTIAL_NIGO", reason: "Multiple data quality issues on this row" })
     }

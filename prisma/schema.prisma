@@ -17,9 +17,11 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  sessions      Session[]
-  memberships   OrganizationMember[]
-  ingestionRuns IngestionRun[]
+  sessions           Session[]
+  memberships        OrganizationMember[]
+  ingestionRuns      IngestionRun[]
+  reconciliationRuns ReconciliationRun[]
+  caseComms          CaseComm[]
 }
 
 model Session {
@@ -42,12 +44,16 @@ model Organization {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  members          OrganizationMember[]
-  funds            Fund[]
-  distributors     Distributor[]
-  mappingTemplates ColumnMappingTemplate[]
-  ingestionRuns    IngestionRun[]
-  workbenchOrders  WorkbenchOrder[]
+  members            OrganizationMember[]
+  funds              Fund[]
+  distributors       Distributor[]
+  transferAgents     TransferAgent[]
+  mappingTemplates   ColumnMappingTemplate[]
+  ingestionRuns      IngestionRun[]
+  workbenchOrders    WorkbenchOrder[]
+  reconciliationRuns ReconciliationRun[]
+  exceptions         Exception[]
+  cases              Case[]
 }
 
 model OrganizationMember {
@@ -80,7 +86,8 @@ model Fund {
   organizationId String
   createdAt      DateTime @default(now())
 
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reconciliationRuns ReconciliationRun[]
 
   @@index([organizationId])
 }
@@ -99,21 +106,39 @@ model Distributor {
   @@index([organizationId])
 }
 
-model ColumnMappingTemplate {
-  id             String    @id @default(cuid())
-  distributorId  String
-  organizationId String
+model TransferAgent {
+  id             String   @id @default(cuid())
   name           String
-  mappingJson    Json
-  isDefault      Boolean   @default(false)
-  lastUsedAt     DateTime?
-  createdAt      DateTime  @default(now())
+  organizationId String
+  createdAt      DateTime @default(now())
 
-  distributor   Distributor    @relation(fields: [distributorId], references: [id], onDelete: Cascade)
-  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  ingestionRuns IngestionRun[]
+  organization       Organization            @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reconciliationRuns ReconciliationRun[]
+  mappingTemplates   ColumnMappingTemplate[]
+
+  @@unique([name, organizationId])
+  @@index([organizationId])
+}
+
+model ColumnMappingTemplate {
+  id               String    @id @default(cuid())
+  distributorId    String?
+  transferAgentId  String?
+  organizationId   String
+  name             String
+  mappingJson      Json
+  isDefault        Boolean   @default(false)
+  lastUsedAt       DateTime?
+  createdAt        DateTime  @default(now())
+
+  distributor        Distributor?        @relation(fields: [distributorId], references: [id], onDelete: Cascade)
+  transferAgent      TransferAgent?      @relation(fields: [transferAgentId], references: [id], onDelete: Cascade)
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ingestionRuns      IngestionRun[]
+  reconciliationRuns ReconciliationRun[]
 
   @@index([distributorId])
+  @@index([transferAgentId])
   @@index([organizationId])
 }
 
@@ -179,7 +204,157 @@ model WorkbenchOrder {
 
   run          IngestionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id])
+  exceptions   Exception[]
 
   @@index([runId])
   @@index([organizationId])
+}
+
+// ─── Reconciliation ───────────────────────────────────────────────────────────
+
+enum ReconciliationStatus {
+  PENDING
+  MAPPING
+  RUNNING
+  COMPLETE
+}
+
+model ReconciliationRun {
+  id                String               @id @default(cuid())
+  organizationId    String
+  transferAgentId   String
+  fundId            String
+  userId            String
+  closeCycle        DateTime
+  fileName          String
+  detectedColumns   String[]
+  previewRows       Json?
+  status            ReconciliationStatus @default(PENDING)
+  taRowCount        Int                  @default(0)
+  portalOrderCount  Int                  @default(0)
+  matchedCount      Int                  @default(0)
+  issuesCount       Int                  @default(0)
+  matchRate         Float?
+  aiNarrative       String?
+  templateId        String?
+  completedAt       DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  organization  Organization           @relation(fields: [organizationId], references: [id])
+  transferAgent TransferAgent          @relation(fields: [transferAgentId], references: [id])
+  fund          Fund                   @relation(fields: [fundId], references: [id])
+  user          User                   @relation(fields: [userId], references: [id])
+  template      ColumnMappingTemplate? @relation(fields: [templateId], references: [id])
+  exceptions    Exception[]
+  deltas        RunDelta[]
+
+  @@index([organizationId])
+  @@index([transferAgentId])
+  @@index([fundId])
+}
+
+enum ExceptionType {
+  STAGE_MISMATCH
+  AMOUNT_FIELD_DIFF
+  MISSING_IN_PORTAL
+  MISSING_IN_TA
+}
+
+enum ExceptionResolution {
+  OPEN
+  COMMUNICATED
+  RESOLVED
+  ESCALATED
+}
+
+model Exception {
+  id               String              @id @default(cuid())
+  runId            String
+  organizationId   String
+  exceptionType    ExceptionType
+  taTxnId          String?
+  workbenchOrderId String?
+  amount           Decimal
+  fundName         String?
+  fieldDiffs       Json?
+  aiPriority       Int                 @default(5)
+  aiRootCause      String?
+  isPersistent     Boolean             @default(false)
+  firstSeenRunId   String?
+  firstSeenAt      DateTime?
+  resolution       ExceptionResolution @default(OPEN)
+  resolutionReason String?
+  resolutionNote   String?
+  createdAt        DateTime            @default(now())
+
+  run            ReconciliationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  organization   Organization      @relation(fields: [organizationId], references: [id])
+  workbenchOrder WorkbenchOrder?   @relation(fields: [workbenchOrderId], references: [id])
+  caseItems      CaseItem[]
+
+  @@index([runId])
+  @@index([organizationId])
+  @@index([resolution])
+}
+
+model RunDelta {
+  id                   String  @id @default(cuid())
+  runId                String
+  previousRunId        String?
+  newExceptions        Int     @default(0)
+  resolvedExceptions   Int     @default(0)
+  persistentExceptions Int     @default(0)
+  aiDeltaSummary       String?
+
+  run ReconciliationRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+}
+
+model Case {
+  id               String   @id @default(cuid())
+  organizationId   String
+  title            String
+  counterpartyType String
+  counterpartyId   String
+  createdAt        DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  items        CaseItem[]
+  comms        CaseComm[]
+
+  @@index([organizationId])
+}
+
+model CaseItem {
+  id          String @id @default(cuid())
+  caseId      String
+  exceptionId String
+
+  case_     Case      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  exception Exception @relation(fields: [exceptionId], references: [id])
+
+  @@index([caseId])
+  @@index([exceptionId])
+}
+
+enum CommDirection {
+  OUTBOUND
+  INBOUND
+}
+
+model CaseComm {
+  id        String        @id @default(cuid())
+  caseId    String
+  direction CommDirection
+  subject   String
+  body      String
+  sentAt    DateTime      @default(now())
+  sentBy    String
+
+  case_ Case @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  user  User @relation(fields: [sentBy], references: [id])
+
+  @@index([caseId])
 }

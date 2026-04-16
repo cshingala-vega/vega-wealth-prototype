@@ -163,12 +163,19 @@ export function UploadForm({ distributors: initialDistributors }: UploadFormProp
 
   async function handleDistributorChange(id: string) {
     setSelectedDistributorId(id)
-    // Check for templates
+    // Check for templates and pre-fill close cycle in parallel
     try {
-      const res = await fetch(`/api/ingestion/templates?distributorId=${id}`)
-      if (res.ok) {
-        const data = (await res.json()) as { hasTemplates: boolean }
+      const [templatesRes, cycleRes] = await Promise.all([
+        fetch(`/api/ingestion/templates?distributorId=${id}`),
+        fetch(`/api/ingestion/latest-cycle?distributorId=${id}`),
+      ])
+      if (templatesRes.ok) {
+        const data = (await templatesRes.json()) as { hasTemplates: boolean }
         setHasTemplates(data.hasTemplates)
+      }
+      if (cycleRes.ok) {
+        const data = (await cycleRes.json()) as { closeCycle: string | null }
+        setCloseCycle(data.closeCycle ?? "")
       }
     } catch {
       // silently ignore

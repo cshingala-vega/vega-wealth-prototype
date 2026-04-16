@@ -57,7 +57,7 @@ export default function WealthPage() {
             </CardFooter>
           </Card>
 
-          {/* Trade Reconciliation — coming soon */}
+          {/* Trade Reconciliation */}
           <Card>
             <CardHeader>
               <CardDescription>Operations module</CardDescription>
@@ -72,7 +72,12 @@ export default function WealthPage() {
               </p>
             </CardContent>
             <CardFooter>
-              <Badge variant="secondary">Coming soon</Badge>
+              <Button asChild>
+                <Link href="/wealth/reconciliation">
+                  Open module
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Link>
+              </Button>
             </CardFooter>
           </Card>
         </div>

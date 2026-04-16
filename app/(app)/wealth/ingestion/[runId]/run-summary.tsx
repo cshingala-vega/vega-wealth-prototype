@@ -36,6 +36,7 @@ interface RunInfo {
   fileName: string
   distributorName: string
   closeCycle: string
+  closeCycleRaw: string
   committedAt: string
   committedBy: string
   templateName: string
@@ -290,14 +291,11 @@ export function RunSummary({
           {/* Action buttons */}
           <div className="flex flex-wrap gap-3">
             {!isReadOnly && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span>
-                    <Button disabled>Start Reconciliation</Button>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent>Coming soon</TooltipContent>
-              </Tooltip>
+              <Button asChild>
+                <Link href={`/wealth/reconciliation/new?closeCycle=${run.closeCycleRaw}`}>
+                  Start Reconciliation
+                </Link>
+              </Button>
             )}
             <Button variant="outline" asChild>
               <Link href="/wealth/ingestion">← Back to Ingestion</Link>

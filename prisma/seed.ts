@@ -1,4 +1,4 @@
-import { PrismaClient, IngestionStatus } from "../lib/generated/prisma/client"
+import { PrismaClient, IngestionStatus, ReconciliationStatus, ExceptionResolution } from "../lib/generated/prisma/client"
 import { PrismaNeon } from "@prisma/adapter-neon"
 import bcrypt from "bcryptjs"
 import "dotenv/config"
@@ -465,6 +465,194 @@ async function main() {
     })
   }
   console.log("  ✓ Run 3 (UBS Dec 2025):", run3Orders.length, "orders")
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RECONCILIATION SEED DATA
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ─── Transfer Agents ─────────────────────────────────────────────────────
+  const taDefs = [
+    { id: "ta-ssc", name: "SS&C" },
+    { id: "ta-bnym", name: "BNY Mellon" },
+  ]
+  const transferAgents: Record<string, string> = {}
+  for (const t of taDefs) {
+    const ta = await prisma.transferAgent.upsert({
+      where: { id: t.id },
+      update: {},
+      create: { id: t.id, name: t.name, organizationId: org.id },
+    })
+    transferAgents[t.name] = ta.id
+  }
+  console.log("  ✓ Transfer Agents:", Object.keys(transferAgents).length)
+
+  // ─── TA Mapping Template (SS&C) ─────────────────────────────────────────
+  await prisma.columnMappingTemplate.upsert({
+    where: { id: "tpl-ssc-default" },
+    update: {},
+    create: {
+      id: "tpl-ssc-default",
+      name: "SS&C — Default",
+      transferAgentId: transferAgents["SS&C"],
+      organizationId: org.id,
+      isDefault: true,
+      lastUsedAt: new Date("2025-12-31"),
+      mappingJson: {
+        transaction_ID: "taTxnId",
+        trade_type: "transactionType",
+        trade_amount: "amount",
+        status: "status",
+        effective_date: "effectiveDate",
+        fund_name: "fundName",
+        share_class: "shareClass",
+        currency: "currency",
+      },
+    },
+  })
+  console.log("  ✓ TA mapping template: SS&C — Default")
+
+  // ─── Reconciliation Run 1 (SS&C, Dec 2025) ──────────────────────────────
+  const reitFundId = funds.find((f) => f.name === "Real Estate Income Trust")!.id
+
+  const reconRun1 = await prisma.reconciliationRun.upsert({
+    where: { id: "recon-ssc-dec25" },
+    update: {},
+    create: {
+      id: "recon-ssc-dec25",
+      organizationId: org.id,
+      transferAgentId: transferAgents["SS&C"],
+      fundId: reitFundId,
+      userId: user.id,
+      closeCycle: new Date("2025-12-31"),
+      fileName: "SSC_Ledger_REIT_Dec2025.xlsx",
+      detectedColumns: [
+        "transaction_ID",
+        "trade_type",
+        "trade_amount",
+        "status",
+        "effective_date",
+        "fund_name",
+        "share_class",
+        "currency",
+      ],
+      status: ReconciliationStatus.COMPLETE,
+      taRowCount: 18,
+      portalOrderCount: 16,
+      matchedCount: 14,
+      issuesCount: 4,
+      matchRate: 77.8,
+      aiNarrative:
+        "The December reconciliation against SS&C returned a 78% match rate across 18 TA rows. Four exceptions were identified: one stage mismatch, one amount discrepancy of $8,000, one trade missing from the portal, and one TA-side missing trade. The open exceptions should be reviewed before the January close.",
+      templateId: "tpl-ssc-default",
+      completedAt: new Date("2025-12-31T15:30:00Z"),
+    },
+  })
+  console.log("  ✓ Reconciliation Run 1 (SS&C Dec 2025)")
+
+  // ─── Exceptions for Reconciliation Run 1 ─────────────────────────────────
+  const exceptions = [
+    {
+      id: "exc-stage-mismatch-1",
+      exceptionType: "STAGE_MISMATCH" as const,
+      taTxnId: "TA-2025-00087",
+      amount: 150000,
+      fundName: "Real Estate Income Trust",
+      fieldDiffs: {
+        status: { portal: "Pending Close", ta: "Settled" },
+      },
+      aiPriority: 3,
+      isPersistent: true,
+      firstSeenAt: new Date("2025-11-30"),
+      resolution: ExceptionResolution.OPEN,
+      aiRootCause:
+        "Status mismatch between portal (Pending Close) and TA (Settled) — the TA may have processed this redemption before the portal was updated.",
+    },
+    {
+      id: "exc-amount-diff-1",
+      exceptionType: "AMOUNT_FIELD_DIFF" as const,
+      taTxnId: "TA-2025-00091",
+      amount: 320000,
+      fundName: "Real Estate Income Trust",
+      fieldDiffs: {
+        amount: { portal: 312000, ta: 320000 },
+      },
+      aiPriority: 2,
+      isPersistent: false,
+      firstSeenAt: null,
+      resolution: ExceptionResolution.OPEN,
+      aiRootCause:
+        "Amount discrepancy of $8,000 — this may indicate a partial redemption adjustment or a pricing correction applied by the TA after the original order was submitted.",
+    },
+    {
+      id: "exc-missing-portal-1",
+      exceptionType: "MISSING_IN_PORTAL" as const,
+      taTxnId: "TA-2025-00094",
+      amount: 75000,
+      fundName: "Real Estate Income Trust",
+      fieldDiffs: null,
+      aiPriority: 4,
+      isPersistent: false,
+      firstSeenAt: null,
+      resolution: ExceptionResolution.COMMUNICATED,
+      aiRootCause:
+        "This subscription appears in the TA ledger but has no matching order in the portal — it may have been submitted directly to the TA without going through the distributor workflow.",
+    },
+    {
+      id: "exc-missing-ta-1",
+      exceptionType: "MISSING_IN_TA" as const,
+      taTxnId: null,
+      amount: 500000,
+      fundName: "Real Estate Income Trust",
+      fieldDiffs: null,
+      aiPriority: 1,
+      isPersistent: true,
+      firstSeenAt: new Date("2025-11-30"),
+      resolution: ExceptionResolution.OPEN,
+      aiRootCause:
+        "A $500,000 subscription exists in the portal but has no corresponding TA record — this may indicate the order was not yet processed by the TA or was rejected without notification.",
+    },
+  ]
+
+  for (const exc of exceptions) {
+    await prisma.exception.upsert({
+      where: { id: exc.id },
+      update: {},
+      create: {
+        id: exc.id,
+        runId: reconRun1.id,
+        organizationId: org.id,
+        exceptionType: exc.exceptionType,
+        taTxnId: exc.taTxnId,
+        amount: exc.amount,
+        fundName: exc.fundName,
+        fieldDiffs: exc.fieldDiffs ? JSON.parse(JSON.stringify(exc.fieldDiffs)) : undefined,
+        aiPriority: exc.aiPriority,
+        isPersistent: exc.isPersistent,
+        firstSeenRunId: exc.isPersistent ? reconRun1.id : null,
+        firstSeenAt: exc.firstSeenAt,
+        resolution: exc.resolution,
+        aiRootCause: exc.aiRootCause,
+      },
+    })
+  }
+  console.log("  ✓ Exceptions:", exceptions.length)
+
+  // ─── RunDelta for Run 1 ──────────────────────────────────────────────────
+  await prisma.runDelta.upsert({
+    where: { id: "delta-ssc-dec25" },
+    update: {},
+    create: {
+      id: "delta-ssc-dec25",
+      runId: reconRun1.id,
+      previousRunId: null,
+      newExceptions: 4,
+      resolvedExceptions: 0,
+      persistentExceptions: 2,
+      aiDeltaSummary:
+        "This is the first reconciliation run for Real Estate Income Trust against SS&C. Four exceptions were identified, two of which are flagged as persistent from prior manual tracking. The $500,000 missing trade is the highest priority item.",
+    },
+  })
+  console.log("  ✓ RunDelta for recon run 1")
 
   console.log("\nSeed complete.")
 }

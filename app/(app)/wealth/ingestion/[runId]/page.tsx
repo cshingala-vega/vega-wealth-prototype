@@ -36,6 +36,7 @@ export default async function RunDetailPage({ params }: { params: Promise<{ runI
         fileName: run.fileName,
         distributorName: run.distributor.name,
         closeCycle: run.closeCycle.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }),
+        closeCycleRaw: run.closeCycle.toISOString().slice(0, 10),
         committedAt: run.committedAt
           ? run.committedAt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) +
             " · " +

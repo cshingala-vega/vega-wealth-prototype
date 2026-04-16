@@ -117,16 +117,31 @@ export async function saveColumnMapping(input: {
         data: { isDefault: false },
       })
 
-      const template = await prisma.columnMappingTemplate.create({
-        data: {
+      // Upsert: update existing template with same name, or create new
+      const existing = await prisma.columnMappingTemplate.findFirst({
+        where: {
           distributorId: run.distributorId,
           organizationId: orgId,
           name: input.templateName,
-          mappingJson: input.mapping,
-          isDefault: true,
-          lastUsedAt: new Date(),
         },
       })
+
+      const template = existing
+        ? await prisma.columnMappingTemplate.update({
+            where: { id: existing.id },
+            data: { mappingJson: input.mapping, isDefault: true, lastUsedAt: new Date() },
+          })
+        : await prisma.columnMappingTemplate.create({
+            data: {
+              distributorId: run.distributorId,
+              organizationId: orgId,
+              name: input.templateName,
+              mappingJson: input.mapping,
+              isDefault: true,
+              lastUsedAt: new Date(),
+            },
+          })
+
       templateId = template.id
     }
 
@@ -142,8 +157,8 @@ export async function saveColumnMapping(input: {
         previewRows: previewRows
           ? previewRows.map((row) => {
               const mapped: Record<string, string> = {}
-              Object.entries(input.mapping).forEach(([sourceCol, schemaField]) => {
-                if (schemaField && schemaField !== "") {
+              Object.entries(input.mapping).forEach(([schemaField, sourceCol]) => {
+                if (sourceCol && sourceCol !== "") {
                   mapped[schemaField] = row[sourceCol] ?? ""
                 }
               })
@@ -195,13 +210,20 @@ function detectFlags(row: Record<string, string>, knownFundAliases: string[]): A
     })
   }
 
+  // Unrecognised transaction type is always a standalone POTENTIAL_NIGO
+  const rawType = (row.transactionType ?? "").trim()
+  if (rawType !== "" && rawType.toLowerCase() !== "subscription" && rawType.toLowerCase() !== "redemption") {
+    flags.push({
+      type: "POTENTIAL_NIGO",
+      reason: `Unrecognised transaction type: ${rawType}`,
+    })
+  }
+
   // POTENTIAL_NIGO: 2+ of these conditions true
   let nigoCount = 0
   if (!row.investorName || row.investorName.trim() === "") nigoCount++
   if (!row.shareClass || row.shareClass.trim() === "") nigoCount++
   if (row.fundName && !knownFundAliases.includes(row.fundName.trim())) nigoCount++
-  const cleanType = (row.transactionType ?? "").trim().toLowerCase()
-  if (cleanType !== "subscription" && cleanType !== "redemption") nigoCount++
   if (nigoCount >= 2) {
     flags.push({
       type: "POTENTIAL_NIGO",
